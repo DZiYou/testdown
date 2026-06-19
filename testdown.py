@@ -1,81 +1,94 @@
 import os
 import requests
 
+
 def wide_search_and_download():
     api_url = "https://mediathekviewweb.de/api/query"
-    
-    # 扩大搜索范围的 Payload
+
+    # 修正后的正确 Payload 格式
     payload = {
         "queries": [
-            # 仅搜索最核心的特征词 "Wissen macht Ah!"，避免被 "Echte Heldinnen" 等字眼限制
-            {"fields": ["title", "topic", "description"], "query": "Wissen macht Ah!"}
+            {
+                "fields": ["title", "topic"],
+                "query": "Wissen macht Ah!",
+            }  # 确保字段和词正确
         ],
         "sortBy": "timestamp",
         "sortOrder": "desc",
-        "future": False,  # 允许搜索历史已播出的节目
+        "future": False,
         "offset": 0,
-        "size": 100       # 扩大返回结果数量到 100 条
+        "size": 20,  # 先拿20条测试
     }
-    
-    print("正在扩大范围搜索（关键词: Wissen macht Ah!...")
+
+    print("正在向 API 请求数据（关键词: Wissen macht Ah!）...")
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Content-Type": "application/json",
+    }
+
     try:
-        response = requests.post(api_url, json=payload)
+        # 注意：有时候服务器严格检查，添加 headers 避开拦截
+        response = requests.post(api_url, json=payload, headers=headers)
         response.raise_for_status()
         data = response.json()
     except Exception as e:
         print(f"网络请求失败: {e}")
         return
 
-    results = data.get("results", [])
+    # MediathekViewWeb 返回的实际数据在外层可能包裹在 result 字典中
+    # 结构通常是 {"result": {"results": [...]}, "err": null}
+    result_obj = data.get("result", {})
+    results = result_obj.get("results", [])
+
     if not results:
-        print("\n[提示] 扩大范围后仍未在 MediathekViewWeb 数据库中找到任何包含 'Wissen macht Ah!' 的视频。")
-        print("这通常意味着该节目在各大电视台（如 ARD, ZDF, ARTE）的在线播放限时（Media Library Period）已过，视频已被官方下架。")
+        # 如果还是找不到，尝试用更宽松的全局字符串搜索格式
+        print("标准搜索无结果，尝试备用全局搜索格式...")
+        backup_payload = {
+            "queries": [{"fields": ["title"], "query": "Wissen"}],
+            "size": 10,
+        }
+        try:
+            response = requests.post(
+                api_url, json=backup_payload, headers=headers
+            )
+            results = response.json().get("result", {}).get("results", [])
+        except:
+            pass
+
+    if not results:
+        print("\n[提示] 仍未找到视频，请检查网络或 API 接口变动。")
         return
 
-    print(f"\n成功找到 {len(results)} 个候选节目！正在为您筛选匹配的视频...")
-    
-    # 列出所有找到的结果供参考
+    print(f"\n成功找到 {len(results)} 个候选节目！")
+
+    # 遍历所有找到的结果，并提取出下载链接和生成 wget 命令
     for index, item in enumerate(results):
-        title = item.get("title", "")
-        topic = item.get("topic", "")
-        channel = item.get("channel", "未知电视台")
-        print(f"[{index + 1}] 频道: {channel} | 主题: {topic} | 标题: {title}")
+        title = item.get("title", "未知标题")
+        topic = item.get("topic", "未知主题")
+        # 提取高清或普通视频链接
+        video_url = item.get("url_video") or item.get("url_hd")
 
-    # 默认尝试下载第一个匹配项
+        if video_url:
+            print(f"\n[{index + 1}] 主题: {topic} | 标题: {title}")
+            print(f"    视频直链: {video_url}")
+            # 打印 wget 命令，加上 -O 参数自定义文件名防止名字太长或报错
+            safe_title = "".join(
+                [c for c in title if c.isalpha() or c.isdigit() or c in " ._-"]
+            ).strip()
+            print(
+                f"    Linux wget 下载命令: \n    wget -O \"{safe_title}.mp4\" \"{video_url}\""
+            )
+
+    # 默认下载第一个
     target_video = results[0]
-    video_url = target_video.get("url_video") or target_video.get("url_hd")
-    
-    if not video_url:
-        print("\n未能提取到有效的视频下载链接。")
-        return
+    final_url = target_video.get("url_video") or target_video.get("url_hd")
 
-    video_title = target_video.get("title", "Wissen macht Ah!_Video")
-    safe_title = "".join([c for c in video_title if c.isalpha() or c.isdigit() or c in " ._-"]).strip()
-    filename = f"{safe_title}.mp4"
+    if final_url:
+        print(
+            f"\n[提示] 如需在当前服务器直接下载第一个视频，可复制运行以下命令："
+        )
+        print(f"wget -c \"{final_url}\"")  # -c 支持断点续传
 
-    print(f"\n准备下载第 1 个视频: {video_title}")
-    print(f"保存文件名: {filename}")
-    
-    try:
-        with requests.get(video_url, stream=True) as video_response:
-            video_response.raise_for_status()
-            total_size = int(video_response.headers.get('content-length', 0))
-            
-            with open(filename, 'wb') as f:
-                downloaded = 0
-                for chunk in video_response.iter_content(chunk_size=8192):
-                    if chunk:
-                        f.write(chunk)
-                        downloaded += len(chunk)
-                        if total_size > 0:
-                            percent = int(100 * downloaded / total_size)
-                            print(f"\r下载进度: [{'>' * (percent // 2)}{' ' * (50 - percent // 2)}] {percent}%", end="")
-                        else:
-                            print(f"\r已下载: {downloaded / (1024*1024):.2f} MB", end="")
-                            
-        print("\n下载完成！")
-    except Exception as e:
-        print(f"\n下载过程中出错: {e}")
 
 if __name__ == "__main__":
     wide_search_and_download()
