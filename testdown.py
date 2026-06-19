@@ -94,3 +94,40 @@ def wide_search_and_download():
             print("    未检测到 wget 命令，正在降级使用 Python requests 下载...")
             try:
                 with requests.get(
+                    video_url, stream=True, timeout=30
+                ) as video_response:
+                    video_response.raise_for_status()
+                    total_size = int(
+                        video_response.headers.get("content-length", 0)
+                    )
+
+                    with open(filename, "wb") as f:
+                        downloaded = 0
+                        for chunk in video_response.iter_content(
+                            chunk_size=1024 * 64
+                        ):  # 扩大缓冲区至 64KB 提高写入性能
+                            if chunk:
+                                f.write(chunk)
+                                downloaded += len(chunk)
+                                if total_size > 0:
+                                    percent = int(100 * downloaded / total_size)
+                                    sys.stdout.write(
+                                        f"\r    进度: [{'>' * (percent // 2)}{' ' * (50 - percent // 2)}] {percent}%"
+                                    )
+                                    sys.stdout.flush()
+                                else:
+                                    sys.stdout.write(
+                                        f"\r    已下载: {downloaded / (1024*1024):.2f} MB"
+                                    )
+                                    sys.stdout.flush()
+                print("\n    该视频下载完成！")
+            except Exception as e:
+                print(f"\n    下载出错: {e}")
+
+        # 【重要提示】默认会连续下载搜索到的全部 100 条视频。
+        # 如果您只想下载列表里的第 1 个最新视频，请把下面这行 break 的注释取消掉：
+        # break
+
+
+if __name__ == "__main__":
+    wide_search_and_download()
