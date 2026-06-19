@@ -7,8 +7,8 @@ def wide_search_and_download():
     # 扩大搜索范围的 Payload
     payload = {
         "queries": [
-            # 仅搜索最核心的特征词 "Unerschrocken"，避免被 "Echte Heldinnen" 等字眼限制
-            {"fields": ["title", "topic", "description"], "query": "Unerschrocken"}
+            # 仅搜索最核心的特征词 "Wissen macht Ah!"，避免被 "Echte Heldinnen" 等字眼限制
+            {"fields": ["title", "topic", "description"], "query": "Wissen macht Ah!"}
         ],
         "sortBy": "timestamp",
         "sortOrder": "desc",
@@ -17,7 +17,7 @@ def wide_search_and_download():
         "size": 100       # 扩大返回结果数量到 100 条
     }
     
-    print("正在扩大范围搜索（关键词: Unerschrocken...")
+    print("正在扩大范围搜索（关键词: Wissen macht Ah!...")
     try:
         response = requests.post(api_url, json=payload)
         response.raise_for_status()
@@ -28,7 +28,7 @@ def wide_search_and_download():
 
     results = data.get("results", [])
     if not results:
-        print("\n[提示] 扩大范围后仍未在 MediathekViewWeb 数据库中找到任何包含 'Unerschrocken' 的视频。")
+        print("\n[提示] 扩大范围后仍未在 MediathekViewWeb 数据库中找到任何包含 'Wissen macht Ah!' 的视频。")
         print("这通常意味着该节目在各大电视台（如 ARD, ZDF, ARTE）的在线播放限时（Media Library Period）已过，视频已被官方下架。")
         return
 
@@ -49,7 +49,7 @@ def wide_search_and_download():
         print("\n未能提取到有效的视频下载链接。")
         return
 
-    video_title = target_video.get("title", "Unerschrocken_Video")
+    video_title = target_video.get("title", "Wissen macht Ah!_Video")
     safe_title = "".join([c for c in video_title if c.isalpha() or c.isdigit() or c in " ._-"]).strip()
     filename = f"{safe_title}.mp4"
 
